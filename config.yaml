@@ -1,0 +1,45 @@
+# API credentials, source toggles and quota state.
+# Fill in the keys before the first fetch. Free tiers, no card required:
+#   Adzuna   https://developer.adzuna.com/   -> app_id + app_key
+#   USAJOBS  https://developer.usajobs.gov/  -> api key, tied to your email
+#
+# NOTE: the copy in git has blank keys. Once you fill yours in, run
+#   git update-index --skip-worktree config.yaml
+# so your credentials and quota counter never show up in a diff.
+
+sources:
+  adzuna:
+    enabled: true
+    app_id: ""
+    app_key: ""
+    country: us
+    results_per_page: 50
+    max_days_old: 7
+  usajobs:
+    enabled: true
+    api_key: ""
+    # User-Agent must be the email your USAJOBS key is registered to.
+    # Falls back to profile.email in resume.yaml when blank.
+    user_agent: ""
+    results_per_page: 50
+  greenhouse:
+    enabled: true
+  lever:
+    enabled: true
+
+quota:
+  adzuna_daily_limit: 10
+  # Managed by fetch.py -- do not edit by hand.
+  adzuna_calls_today: 0
+  adzuna_quota_date: ""
+
+enrich:
+  # How many of the top-scoring jobs to fetch full descriptions for per run.
+  top_n: 25
+  request_delay_seconds: 1.0
+  timeout_seconds: 20
+  max_retries: 2
+  user_agent: "job-match-engine/1.0 (personal job search; contact ericchiu0228@gmail.com)"
+
+state:
+  last_fetch: ""
