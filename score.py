@@ -203,6 +203,7 @@ def run_score(verbose=True, explain=False):
 
     scored = dropped = 0
     reasons = Counter()
+    samples = {}  # reason -> a few example titles, so --why shows WHAT a rule eats
     stamp = now_iso()
     for row in rows:
         job = dict(row)
@@ -215,7 +216,13 @@ def run_score(verbose=True, explain=False):
         if "dropped" in result:
             conn.execute("DELETE FROM scores WHERE job_id = ?", (job["id"],))
             dropped += 1
-            reasons[result["dropped"]] += 1
+            reason = result["dropped"]
+            reasons[reason] += 1
+            bucket = samples.setdefault(reason, [])
+            if len(bucket) < 3:
+                bucket.append(
+                    f"{(job.get('title') or '?')[:48]} — {(job.get('company') or '?')[:20]}"
+                )
             continue
         conn.execute(
             """INSERT INTO scores (job_id, score, title_score, keyword_score,
@@ -252,8 +259,10 @@ def run_score(verbose=True, explain=False):
             print("\nwhy jobs were dropped:")
             for reason, count in reasons.most_common():
                 print(f"  {count:>5}  {reason}")
+                for example in samples.get(reason, []):
+                    print(f"           e.g. {example}")
             print("\nEach line is a rule in resume.yaml. If one is eating everything,")
-            print("that is the rule to loosen.")
+            print("that is the rule to loosen -- the examples show what it ate.")
     conn.close()
     return scored, dropped
 

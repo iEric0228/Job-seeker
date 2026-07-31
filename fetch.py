@@ -285,6 +285,10 @@ ENTRY_RE = re.compile(
 SENIOR_RE = re.compile(
     r"\b(senior|sr\.?|staff|principal|lead|director|head of|manager)\b", re.IGNORECASE
 )
+# Ladder suffixes big-tech boards use: "Engineer I" is entry, "Engineer III+"
+# is senior. II is left to the default -- it varies too much between ladders.
+_SUFFIX_ENTRY = re.compile(r"\b(i|1)\s*$", re.IGNORECASE)
+_SUFFIX_SENIOR = re.compile(r"\b(iii|iv|v|3|4|5)\s*$", re.IGNORECASE)
 
 
 def parse_experience(title, description):
@@ -308,12 +312,16 @@ def parse_experience(title, description):
             years.append(months // 12)  # "6 months experience" reads as 0 years
     min_years = min(years) if years else None
 
-    title_text = title or ""
+    title_text = (title or "").strip()
     if INTERNSHIP_RE.search(title_text):
         level = "internship"
     elif ENTRY_RE.search(title_text):
         level = "entry"
     elif SENIOR_RE.search(title_text):
+        level = "senior"
+    elif _SUFFIX_ENTRY.search(title_text):
+        level = "entry"
+    elif _SUFFIX_SENIOR.search(title_text):
         level = "senior"
     elif INTERNSHIP_RE.search(blob[:2000]):
         level = "internship"
