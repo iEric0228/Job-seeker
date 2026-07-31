@@ -2,52 +2,47 @@
 # descriptions of any source, so these rows win dedup against Adzuna.
 #
 # Finding a token: open the company's careers page and look at the URL.
-#   https://boards.greenhouse.io/<token>       -> greenhouse
+#   https://job-boards.greenhouse.io/<token>   -> greenhouse
 #   https://jobs.lever.co/<token>              -> lever
 # A company that has moved ATS just logs one skipped-board line and is ignored,
 # so a stale entry here costs nothing. Verify with:
 #   python fetch.py --source greenhouse --probe
 #
-# Tuned for cloud / DevOps / SRE / support hiring. Add your own targets freely.
+# Every token below was confirmed live on 2026-07-31 (returned postings rather
+# than a 404). Boards do churn -- companies switch ATS, change their slug, or
+# move to an embedded widget -- so re-check any that start 404ing.
 
 greenhouse:
   - cloudflare
   - databricks
   - dropbox
-  - doordash
   - stripe
   - coinbase
   - reddit
   - robinhood
   - figma
   - brex
-  - ramp
-  - plaid
   - twilio
   - asana
   - discord
   - instacart
   - lyft
   - pinterest
-  - benchling
   - samsara
   - flexport
   - gusto
   - airtable
-  - sentry
   - vercel
   - cockroachlabs
-  - hashicorp
-  - snyk
 
 lever:
-  - netflix
-  - lattice
-  - nerdwallet
-  - quora
-  - mixpanel
-  - rippling
-  - attentive
-  - fivetran
   - matchgroup
-  - sharethrough
+
+# Confirmed dead as of 2026-07-31 -- all returned 404. Left here as a record so
+# they do not get re-added by someone working from an old list. Several of these
+# companies still use the ATS but under a different slug, so if you want them
+# back, find the current token from their careers-page URL rather than guessing.
+#
+#   greenhouse: doordash, ramp, plaid, benchling, sentry, hashicorp, snyk
+#   lever:      netflix, lattice, nerdwallet, quora, mixpanel, rippling,
+#               attentive, fivetran, sharethrough

@@ -12,7 +12,13 @@ Needs **Python 3.11+** (the code uses `datetime.UTC`). You do not have to instal
 it yourself — `uv` reads `requires-python` from `pyproject.toml` and fetches a
 suitable interpreter.
 
+**Clone it, don't download the ZIP.** GitHub's "Download ZIP" unpacks to a
+`Job-seeker-main/` folder with no `.git`, so `git pull` fails with
+`fatal: not a git repository` and you silently stay on old code.
+
 ```bash
+git clone https://github.com/iEric0228/Job-seeker.git
+cd Job-seeker
 uv sync
 uv run python db.py --init
 ```
@@ -74,6 +80,25 @@ uv run python fetch.py --source greenhouse --probe
 
 If the field names don't match what the adapter reads, fix the adapter — don't
 guess.
+
+## When the list looks empty
+
+```bash
+uv run python db.py --stats     # did anything get fetched?
+uv run python score.py --why    # which rule dropped how many?
+```
+
+`--why` prints a count per drop reason. Read it as a funnel:
+
+| Symptom | Cause |
+|---|---|
+| `jobs` is 0 | fetching failed — check the per-board lines from `fetch.py` |
+| `jobs` high, `scores` near 0 | a rule in `resume.yaml` is too tight; `--why` names it |
+| both healthy, dashboard empty | sidebar filters or the min-score slider |
+
+`no_title_match` dominating is normal — an ATS board returns every department,
+so most postings are sales, design or finance roles you never wanted. What
+matters is whether one *other* rule is eating everything.
 
 ## Tuning the scorer
 

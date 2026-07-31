@@ -121,6 +121,47 @@ def candidate_jobs(
     return rows
 
 
+FILTER_LABELS = [
+    ("min_score", "min score"),
+    ("levels", "experience level"),
+    ("max_years", "max years required"),
+    ("countries", "country"),
+    ("states", "state"),
+    ("remote_only", "remote only"),
+    ("days", "posted within"),
+    ("sources", "sources"),
+]
+
+NO_FILTERS = {
+    "min_score": 0,
+    "sources": None,
+    "remote_only": False,
+    "days": None,
+    "countries": None,
+    "states": None,
+    "levels": None,
+    "max_years": None,
+}
+
+
+def filter_diagnosis(conn, filters):
+    """Which single sidebar control is hiding the jobs?
+
+    Each row applies exactly one filter to the full scored set, so a row far
+    below the total names the culprit directly. Cumulative counts would only
+    tell you that something, somewhere, cut the list to nothing.
+    """
+    rows = []
+    total = len(candidate_jobs(conn, limit=1_000_000, **NO_FILTERS))
+    rows.append(("scored jobs, no filters", total))
+    for key, label in FILTER_LABELS:
+        if filters.get(key) in (None, [], False):
+            continue
+        probe = {**NO_FILTERS, key: filters[key]}
+        rows.append((label, len(candidate_jobs(conn, limit=1_000_000, **probe))))
+    return rows
+
+
 def mark(conn, job_id, status, notes=None):
     conn.execute(
         """INSERT INTO applications (job_id, status, applied_at, notes)
@@ -391,7 +432,11 @@ def main():
                 "SELECT DISTINCT level FROM jobs WHERE level IS NOT NULL ORDER BY 1"
             )
         ]
-        level_default = [lv for lv in ("internship", "entry") if lv in all_levels] or all_levels
+        # Default to whatever resume.yaml already allows. Hardcoding a stricter
+        # default here would hide jobs the scorer deliberately kept, with no
+        # indication why.
+        wanted = (load_yaml("resume.yaml").get("match") or {}).get("levels") or []
+        level_default = [lv for lv in all_levels if lv in wanted] or all_levels
         levels = st.multiselect("Experience level", all_levels, default=level_default)
         max_years = st.slider(
             "Max years required", 0, 10, 2, help="Postings that state no requirement are kept"
@@ -434,6 +479,7 @@ def main():
         "levels": levels,
         "max_years": max_years,
     }
+    st.session_state.filters = filters  # the empty-state diagnosis needs these
     if st.session_state.get("filter_sig") != filter_signature(filters):
         rebuild_queue(conn, filters)
 
@@ -458,10 +504,24 @@ def render_today():
     conn = connect()
     queue = st.session_state.queue
     if not queue:
-        st.info(
-            "Nothing left in the queue. Lower the min score, widen the date "
-            "window, or hit **Fetch now**."
-        )
+        rows = filter_diagnosis(conn, st.session_state.get("filters", {}))
+        total = rows[0][1] if rows else 0
+        if total == 0:
+            st.info(
+                "No scored jobs at all. Hit **Fetch now**, or run "
+                "`uv run python score.py --why` to see which rule in "
+                "`resume.yaml` is dropping everything."
+            )
+        else:
+            st.warning(f"All {total} scored jobs are hidden by the sidebar filters.")
+            st.caption(
+                "Each row applies that one filter alone. The small numbers are the culprits."
+            )
+            st.dataframe(
+                pd.DataFrame(rows, columns=["filter applied alone", "jobs surviving"]),
+                hide_index=True,
+                use_container_width=True,
+            )
         return
 
     st.caption(f"{len(queue)} shown · {len(st.session_state.bench)} waiting behind them")
