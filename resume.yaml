@@ -13,8 +13,15 @@ match:
   # title_score = max weight of any matching pattern (0-10), then x3 in the
   # total. No match at all drops the job. Order does not matter.
   target_titles:
+    # Entry-level and internship markers score highest -- title is tripled, so
+    # these outrank an equally-matching mid-level posting by a wide margin.
+    - { pattern: "(intern|internship|co-?op)\\b.*(engineer|cloud|it|support|devops|technical)", weight: 10 }
+    - { pattern: "(engineer|cloud|it|support|devops|technical).*\\b(intern|internship|co-?op)\\b", weight: 10 }
+    - { pattern: "(new ?grad|university grad|campus|early career|rotational)", weight: 10 }
+    - { pattern: "(entry.?level|associate|junior|jr\\.?)\\s*(cloud|support|devops|systems?|network|it|technical|sre|platform)", weight: 10 }
     - { pattern: "cloud support (engineer|associate)", weight: 10 }
     - { pattern: "technical support engineer", weight: 9 }
+    - { pattern: "(help ?desk|service desk|desktop support|it support)", weight: 8 }
     - { pattern: "support engineer", weight: 8 }
     - { pattern: "cloud (engineer|operations|ops)", weight: 8 }
     - { pattern: "devops engineer", weight: 8 }
@@ -31,7 +38,8 @@ match:
   # Dropped before scoring.
   exclude_titles:
     - "\\b(director|vp|vice president|head of|chief|principal)\\b"
-    - "\\b(intern|internship|co-?op)\\b"
+    # NOTE: internships are deliberately NOT excluded -- they are a target.
+    - "\\b(senior|sr\\.?|staff|lead)\\b"
     - "\\b(sales|account executive|recruiter|marketing)\\b"
     - "(front.?end|ui|ux|mobile|ios|android|game) (developer|engineer)"
     - "\\b(data scientist|machine learning|ml engineer)\\b"
@@ -42,7 +50,8 @@ match:
     - "\\bpolygraph\\b"
     - "must (be able to )?(work|reside) (on.?site|in.?person) in (?!.*remote)"
     - "\\bunpaid\\b"
-    - "\\b(10|12|15)\\+? years of experience\\b"
+    - "\\b(5|6|7|8|9|10|12|15)\\+? years"
+    - "\\b(deep|extensive|expert.level) experience\\b"
 
   # keyword_score = sum of the weights of terms found in title+description,
   # each term counted once, capped at 30.
@@ -109,9 +118,29 @@ match:
     - { pattern: "rhode island|\\bri\\b|providence", weight: 4 }
     - { pattern: "connecticut|\\bct\\b", weight: 3 }
 
+  # --- experience and geography: hard filters, not score components ---------
+  # A job wanting more years than this is dropped. Postings that state no
+  # requirement are always kept, so this does not silently hide the many JDs
+  # that never name a number. Raise it to widen the net.
+  max_years_experience: 2
+
+  # Which seniority bands to keep. Parsed from the title, then the JD.
+  # Drop "mid" from this list to go internship/entry only.
+  levels:
+    - internship
+    - entry
+    - mid
+
+  # ISO-2 codes. Greenhouse and Lever boards return roles worldwide, so
+  # without this a London posting can reach your daily ten on title alone.
+  # Empty list = allow everywhere.
+  countries:
+    - US
+
   # salary_max below this earns a -5 penalty. Jobs with no salary data are
-  # not penalised -- most postings omit it.
-  salary_floor: 75000
+  # not penalised -- most postings omit it. Interns and entry roles pay less,
+  # so this is deliberately low; raise it once you are targeting full-time.
+  salary_floor: 45000
 
   # Adzuna queries: one call per title, top N by weight. Keep under the quota.
   search:

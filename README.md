@@ -8,10 +8,19 @@ the scoring path — every point a job scores is traceable to a line in
 
 ## Setup
 
+Needs **Python 3.11+** (the code uses `datetime.UTC`). You do not have to install
+it yourself — `uv` reads `requires-python` from `pyproject.toml` and fetches a
+suitable interpreter.
+
 ```bash
 uv sync
-python db.py --init
+uv run python db.py --init
 ```
+
+**Run everything through `uv run`.** A bare `python` or `python3` picks up
+whatever the system ships — on macOS that is often Xcode's Python 3.9, which
+fails with `ImportError: cannot import name 'UTC' from 'datetime'`. `uv run`
+always uses the project's interpreter.
 
 Then put your API keys in `config.yaml`:
 
@@ -30,11 +39,11 @@ git update-index --skip-worktree config.yaml
 ## Daily use
 
 ```bash
-python fetch.py     # pull new postings  (Adzuna capped at 10 calls/day)
-python score.py     # rank them
-python enrich.py    # full descriptions for the top 25
-python score.py     # rescore: the full JD changes keyword_score a lot
-streamlit run app.py
+uv run python fetch.py     # pull new postings  (Adzuna capped at 10 calls/day)
+uv run python score.py     # rank them
+uv run python enrich.py    # full descriptions for the top 25
+uv run python score.py     # rescore: the full JD changes keyword_score a lot
+uv run streamlit run app.py
 ```
 
 The second `score.py` is not a typo. `enrich.py` replaces Adzuna's truncated
@@ -47,8 +56,11 @@ sequence inline.
 A cron line, if you want it waiting for you:
 
 ```
-0 7 * * * cd /path/to/job-match && python fetch.py && python score.py && python enrich.py && python score.py
+0 7 * * * cd /path/to/job-match && /full/path/to/uv run python fetch.py && /full/path/to/uv run python score.py && /full/path/to/uv run python enrich.py && /full/path/to/uv run python score.py
 ```
+
+cron runs with a minimal `PATH`, so give `uv` its absolute path — `which uv`
+will tell you (typically `~/.local/bin/uv` or `/opt/homebrew/bin/uv`).
 
 ## Verify the APIs before trusting a run
 
@@ -56,8 +68,8 @@ These endpoints drift. `--probe` prints the top-level keys and every field of th
 first result, per source, and writes nothing:
 
 ```bash
-python fetch.py --probe
-python fetch.py --source greenhouse --probe
+uv run python fetch.py --probe
+uv run python fetch.py --source greenhouse --probe
 ```
 
 If the field names don't match what the adapter reads, fix the adapter — don't
@@ -76,6 +88,33 @@ score = (title_score x 3) + keyword_score + location_score + freshness_score - p
 | `location_score` | 0–10 | best-matching `match.locations` entry; `remote=1` satisfies "Remote (US)" |
 | `freshness_score` | 0/1/3 | posted <48h → 3, <7d → 1 |
 | `penalty` | 0–11 | `salary_max` below `salary_floor` → 5; each `keywords.gaps` term → 2, capped at 6 |
+
+### Experience and geography
+
+These are **hard filters, not score components** — wanting entry-level work means
+a job demanding seven years is the wrong job, not a weaker match.
+
+| `resume.yaml` key | Effect |
+|---|---|
+| `max_years_experience` | drops postings demanding more years than this |
+| `levels` | keeps only these bands: `internship`, `entry`, `mid`, `senior` |
+| `countries` | ISO-2 allowlist; empty means everywhere |
+
+**A posting that states no requirement is always kept.** Most JDs never name a
+number, and silently hiding them would cost you more jobs than it saves.
+
+Level comes from the title first (`Intern`, `New Grad`, `Junior`, `Senior`…),
+then the JD body, then the stated years. Years is the *lowest* figure found
+anywhere in the posting — "3–5 years" reads as 3 — because wrongly hiding a job
+you could have got is worse than showing one you skip.
+
+The `countries` filter matters more than it looks: Greenhouse and Lever boards
+return roles worldwide, so without it a London posting can reach your daily ten
+on title and keywords alone.
+
+The dashboard has matching sidebar filters (experience level, max years,
+country, state) that narrow further without re-running the scorer. Remote roles
+always pass the state filter.
 
 Everything lives in `resume.yaml`. Edit it, re-run `python score.py`, and use the
 **Tuning** tab to see what changed — it shows every component in its own column,
@@ -112,8 +151,8 @@ already acted on is never displaced.
 ## Tests
 
 ```bash
-pytest test_score.py
-ruff check . && ruff format .
+uv run pytest test_score.py
+uv run ruff check . && uv run ruff format .
 ```
 
 The scorer is the only thing under test, by design.

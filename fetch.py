@@ -54,6 +54,245 @@ def strip_html(raw):
     return text.strip()
 
 
+US_STATES = {
+    "alabama": "AL",
+    "alaska": "AK",
+    "arizona": "AZ",
+    "arkansas": "AR",
+    "california": "CA",
+    "colorado": "CO",
+    "connecticut": "CT",
+    "delaware": "DE",
+    "florida": "FL",
+    "georgia": "GA",
+    "hawaii": "HI",
+    "idaho": "ID",
+    "illinois": "IL",
+    "indiana": "IN",
+    "iowa": "IA",
+    "kansas": "KS",
+    "kentucky": "KY",
+    "louisiana": "LA",
+    "maine": "ME",
+    "maryland": "MD",
+    "massachusetts": "MA",
+    "michigan": "MI",
+    "minnesota": "MN",
+    "mississippi": "MS",
+    "missouri": "MO",
+    "montana": "MT",
+    "nebraska": "NE",
+    "nevada": "NV",
+    "new hampshire": "NH",
+    "new jersey": "NJ",
+    "new mexico": "NM",
+    "new york": "NY",
+    "north carolina": "NC",
+    "north dakota": "ND",
+    "ohio": "OH",
+    "oklahoma": "OK",
+    "oregon": "OR",
+    "pennsylvania": "PA",
+    "rhode island": "RI",
+    "south carolina": "SC",
+    "south dakota": "SD",
+    "tennessee": "TN",
+    "texas": "TX",
+    "utah": "UT",
+    "vermont": "VT",
+    "virginia": "VA",
+    "washington": "WA",
+    "west virginia": "WV",
+    "wisconsin": "WI",
+    "wyoming": "WY",
+    "district of columbia": "DC",
+    "washington dc": "DC",
+    "puerto rico": "PR",
+}
+STATE_CODES = set(US_STATES.values())
+
+# Only the countries these boards actually return in volume.
+COUNTRIES = {
+    "united states": "US",
+    "usa": "US",
+    "u.s.": "US",
+    "u.s.a.": "US",
+    "us": "US",
+    "united kingdom": "GB",
+    "uk": "GB",
+    "england": "GB",
+    "scotland": "GB",
+    "canada": "CA",
+    "ireland": "IE",
+    "germany": "DE",
+    "france": "FR",
+    "spain": "ES",
+    "netherlands": "NL",
+    "poland": "PL",
+    "portugal": "PT",
+    "india": "IN",
+    "singapore": "SG",
+    "australia": "AU",
+    "japan": "JP",
+    "israel": "IL",
+    "brazil": "BR",
+    "mexico": "MX",
+    "china": "CN",
+    "switzerland": "CH",
+    "sweden": "SE",
+    "denmark": "DK",
+    "norway": "NO",
+    "italy": "IT",
+    "belgium": "BE",
+    "austria": "AT",
+    "romania": "RO",
+    "new zealand": "NZ",
+    "south africa": "ZA",
+    "argentina": "AR",
+    "colombia": "CO",
+    "philippines": "PH",
+    "korea": "KR",
+    "taiwan": "TW",
+}
+
+# Cities common on ATS boards whose names alone imply a non-US country.
+FOREIGN_CITIES = {
+    "london": "GB",
+    "dublin": "IE",
+    "berlin": "DE",
+    "munich": "DE",
+    "paris": "FR",
+    "amsterdam": "NL",
+    "madrid": "ES",
+    "barcelona": "ES",
+    "toronto": "CA",
+    "vancouver": "CA",
+    "montreal": "CA",
+    "bangalore": "IN",
+    "bengaluru": "IN",
+    "hyderabad": "IN",
+    "mumbai": "IN",
+    "pune": "IN",
+    "singapore": "SG",
+    "sydney": "AU",
+    "melbourne": "AU",
+    "tokyo": "JP",
+    "tel aviv": "IL",
+    "zurich": "CH",
+    "stockholm": "SE",
+    "warsaw": "PL",
+    "lisbon": "PT",
+    "krakow": "PL",
+    "sao paulo": "BR",
+    "mexico city": "MX",
+}
+
+
+def parse_location(location, default_country=None):
+    """Location string -> (country ISO-2, US state code or None).
+
+    Handles "Boston, MA", "Boston, Massachusetts, US", "Remote (US)",
+    "London, UK" and bare "London". `default_country` is what to assume when
+    nothing in the string identifies a country -- Adzuna is queried per country
+    and USAJOBS is federal, so those callers know the answer already.
+    """
+    text = (location or "").strip().lower()
+    if not text:
+        return default_country, None
+
+    # Parentheses are separators, not decoration: "Remote (US)" carries the
+    # country inside them, and "Boston, MA (Hybrid)" carries noise.
+    segments = [s.strip(" ()[]") for s in re.split(r"[,/|()\[\]]| - ", text) if s.strip(" ()[]")]
+
+    # Two-letter codes win over full names, checked across every segment first.
+    # "Washington, DC" must not resolve to Washington state on segment one.
+    state = None
+    for seg in segments:
+        if len(seg) == 2 and seg.upper() in STATE_CODES:
+            state = seg.upper()
+            break
+    if state is None:
+        for seg in segments:
+            if seg in US_STATES:
+                state = US_STATES[seg]
+                break
+
+    country = None
+    for seg in segments:
+        if seg in COUNTRIES:
+            country = COUNTRIES[seg]
+            break
+    if country is None:
+        for seg in segments:
+            if seg in FOREIGN_CITIES:
+                country = FOREIGN_CITIES[seg]
+                break
+
+    if state and country in (None, "US"):
+        return "US", state
+    if country and country != "US":
+        return country, None  # a US state code cannot apply outside the US
+    return country or default_country, state
+
+
+# "3+ years", "3-5 years", "minimum of 2 years", "at least 18 months"
+_YEARS_RE = re.compile(
+    r"(?:(\d{1,2})\s*(?:\+|plus)?\s*(?:-|–|to)\s*\d{1,2}|(\d{1,2})\s*(?:\+|plus)?)\s*"
+    r"(?:\+\s*)?year",
+    re.IGNORECASE,
+)
+_MONTHS_RE = re.compile(r"(\d{1,2})\s*months?", re.IGNORECASE)
+
+INTERNSHIP_RE = re.compile(r"\b(intern|internship|co-?op|placement student)\b", re.IGNORECASE)
+ENTRY_RE = re.compile(
+    r"\b(entry.?level|new ?grad(uate)?|junior|jr\.?|associate|trainee|apprentice"
+    r"|early career|university grad|campus hire|rotational program)\b",
+    re.IGNORECASE,
+)
+SENIOR_RE = re.compile(
+    r"\b(senior|sr\.?|staff|principal|lead|director|head of|manager)\b", re.IGNORECASE
+)
+
+
+def parse_experience(title, description):
+    """-> (min_years_required or None, level).
+
+    Years is the *lowest* requirement stated anywhere in the posting. A JD
+    saying "3-5 years" wants 3; one saying "2 years of Linux, 5 overall" is
+    read as 2. Erring permissive matters here -- wrongly hiding a job you could
+    have got is worse than showing one you skip.
+    """
+    blob = f"{title or ''}\n{description or ''}"
+
+    years = []
+    for match in _YEARS_RE.finditer(blob):
+        value = match.group(1) or match.group(2)
+        if value is not None:
+            years.append(int(value))
+    for match in _MONTHS_RE.finditer(blob):
+        months = int(match.group(1))
+        if months >= 6:  # "6 months experience" reads as 0 years, not 6
+            years.append(months // 12)
+    min_years = min(years) if years else None
+
+    title_text = title or ""
+    if INTERNSHIP_RE.search(title_text):
+        level = "internship"
+    elif ENTRY_RE.search(title_text):
+        level = "entry"
+    elif SENIOR_RE.search(title_text):
+        level = "senior"
+    elif INTERNSHIP_RE.search(blob[:2000]):
+        level = "internship"
+    elif ENTRY_RE.search(blob[:2000]) or min_years is not None and min_years <= 1:
+        level = "entry"
+    elif min_years is not None and min_years >= 5:
+        level = "senior"
+    else:
+        level = "mid"
+    return min_years, level
+
+
 def guess_remote(title, location, description):
     """0/1/None. Only claims remote when the posting says so somewhere visible."""
     blob = " ".join(filter(None, [title, location]))
@@ -106,6 +345,10 @@ def make_job(source, native_id, **fields):
     remote = fields.get("remote")
     if remote is None:
         remote = guess_remote(title, location, description)
+    country, state = parse_location(location, fields.get("default_country"))
+    if remote == 1 and country is None:
+        country = fields.get("default_country")
+    min_years, level = parse_experience(title, description)
     return {
         "id": f"{source}:{native_id}",
         "dedupe_key": dedupe_key(company, title, location),
@@ -122,6 +365,10 @@ def make_job(source, native_id, **fields):
         "posted_at": to_iso(fields.get("posted_at")),
         "first_seen": now_iso(),
         "raw_json": json.dumps(fields.get("raw", {}), default=str)[:200000],
+        "country": country,
+        "state": state,
+        "min_years_exp": min_years,
+        "level": level,
     }
 
 
@@ -145,6 +392,10 @@ COLUMNS = [
     "posted_at",
     "first_seen",
     "raw_json",
+    "country",
+    "state",
+    "min_years_exp",
+    "level",
 ]
 
 
@@ -286,6 +537,8 @@ def fetch_adzuna(config, resume, probe=False):
                     salary_min=item.get("salary_min"),
                     salary_max=item.get("salary_max"),
                     posted_at=item.get("created"),
+                    # Adzuna is queried one country at a time, so we know it.
+                    default_country=cfg.get("country", "us").upper(),
                     raw=item,
                 )
             )
@@ -384,6 +637,7 @@ def fetch_usajobs(config, resume, probe=False):
                     desc_is_full=1,
                     salary_min=pay.get("MinimumRange"),
                     salary_max=pay.get("MaximumRange"),
+                    default_country="US",  # USAJOBS is federal
                     posted_at=d.get("PublicationStartDate"),
                     raw=d,
                 )

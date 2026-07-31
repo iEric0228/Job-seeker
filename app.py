@@ -61,13 +61,25 @@ STOPWORDS = {
 # --------------------------------------------------------------------------- #
 
 
-def candidate_jobs(conn, min_score=40, sources=None, remote_only=False, days=7, limit=BENCH_SIZE):
+def candidate_jobs(
+    conn,
+    min_score=40,
+    sources=None,
+    remote_only=False,
+    days=7,
+    countries=None,
+    states=None,
+    levels=None,
+    max_years=None,
+    limit=BENCH_SIZE,
+):
     """Ranked, deduped, excluding anything already in applications."""
     # Explicit columns, never j.* -- jobs.raw_json holds the whole API payload and
     # this query reruns on every slider move, toggle, apply, skip and tab switch.
     sql = """
         SELECT j.id, j.source, j.company, j.title, j.location, j.remote, j.url,
                j.description, j.desc_is_full, j.salary_min, j.salary_max, j.posted_at,
+               j.country, j.state, j.min_years_exp, j.level,
                s.score, s.title_score, s.keyword_score, s.location_score,
                s.freshness_score, s.penalty, s.matched_keywords, s.gap_flags
         FROM scores s
@@ -85,6 +97,20 @@ def candidate_jobs(conn, min_score=40, sources=None, remote_only=False, days=7, 
         cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
         sql += " AND (j.posted_at IS NULL OR j.posted_at >= ?)"
         params.append(cutoff)
+    if countries:
+        sql += f" AND j.country IN ({','.join('?' * len(countries))})"
+        params.extend(countries)
+    if states:
+        # Remote roles have no state but are still reachable from anywhere.
+        sql += f" AND (j.state IN ({','.join('?' * len(states))}) OR j.remote = 1)"
+        params.extend(states)
+    if levels:
+        sql += f" AND (j.level IS NULL OR j.level IN ({','.join('?' * len(levels))}))"
+        params.extend(levels)
+    if max_years is not None:
+        # A posting that names no requirement is kept, same as the scorer.
+        sql += " AND (j.min_years_exp IS NULL OR j.min_years_exp <= ?)"
+        params.append(max_years)
     sql += " ORDER BY s.score DESC, j.posted_at DESC LIMIT ?"
     params.append(limit)
 
@@ -257,6 +283,26 @@ def card_html(job):
     )
     remote = " (Remote)" if job.get("remote") == 1 else ""
     salary = money(job)
+
+    # Seniority is the thing being filtered on, so make it visible on the card.
+    level_colors = {
+        "internship": ("#ddf4ff", "#0550ae"),
+        "entry": ("#dafbe1", "#1a7f37"),
+        "mid": ("#eaeef2", "#57606a"),
+        "senior": ("#ffebe9", "#a40e26"),
+    }
+    badges = ""
+    if job.get("level"):
+        bg, fg = level_colors.get(job["level"], ("#eaeef2", "#57606a"))
+        badges += (
+            f'<span style="background:{bg};color:{fg};border-radius:10px;padding:1px 8px;'
+            f'margin-right:4px;font-size:12px;font-weight:600">{job["level"]}</span>'
+        )
+    if job.get("min_years_exp") is not None:
+        badges += (
+            f'<span style="background:#eaeef2;color:#57606a;border-radius:10px;padding:1px 8px;'
+            f'margin-right:4px;font-size:12px">{job["min_years_exp"]}+ yrs</span>'
+        )
     return f"""
 <div style="display:flex;gap:14px;align-items:flex-start">
   <div style="background:{badge_color(job["score"])};color:#fff;border-radius:8px;
@@ -271,7 +317,7 @@ def card_html(job):
       {job["company"] or "Unknown"} · {job["location"] or "Location unknown"}{remote}
       · {age_text(job["posted_at"])} · {job["source"]}
     </div>
-    <div style="line-height:1.9">{chips}{gaps}</div>
+    <div style="line-height:1.9">{badges}{chips}{gaps}</div>
   </div>
 </div>"""
 
@@ -338,6 +384,36 @@ def main():
             r[0] for r in conn.execute("SELECT DISTINCT source FROM jobs ORDER BY 1").fetchall()
         ]
         sources = st.multiselect("Sources", available, default=available)
+
+        all_levels = [
+            r[0]
+            for r in conn.execute(
+                "SELECT DISTINCT level FROM jobs WHERE level IS NOT NULL ORDER BY 1"
+            )
+        ]
+        level_default = [lv for lv in ("internship", "entry") if lv in all_levels] or all_levels
+        levels = st.multiselect("Experience level", all_levels, default=level_default)
+        max_years = st.slider(
+            "Max years required", 0, 10, 2, help="Postings that state no requirement are kept"
+        )
+
+        all_countries = [
+            r[0]
+            for r in conn.execute(
+                "SELECT DISTINCT country FROM jobs WHERE country IS NOT NULL ORDER BY 1"
+            )
+        ]
+        countries = st.multiselect(
+            "Country", all_countries, default=["US"] if "US" in all_countries else all_countries
+        )
+        all_states = [
+            r[0]
+            for r in conn.execute(
+                "SELECT DISTINCT state FROM jobs WHERE state IS NOT NULL ORDER BY 1"
+            )
+        ]
+        states = st.multiselect("State", all_states, help="Blank = all. Remote roles always pass.")
+
         remote_only = st.toggle("Remote only")
         window = st.selectbox(
             "Posted within", [1, 3, 7, 14, 30], index=2, format_func=lambda d: f"{d}d"
@@ -353,6 +429,10 @@ def main():
         "sources": sources,
         "remote_only": remote_only,
         "days": window,
+        "countries": countries,
+        "states": states,
+        "levels": levels,
+        "max_years": max_years,
     }
     if st.session_state.get("filter_sig") != filter_signature(filters):
         rebuild_queue(conn, filters)

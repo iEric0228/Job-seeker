@@ -26,6 +26,9 @@ RESUME = {
             {"pattern": r"massachusetts|\bma\b", "weight": 7},
         ],
         "salary_floor": 75000,
+        "max_years_experience": 2,
+        "levels": ["internship", "entry", "mid"],
+        "countries": ["US"],
     }
 }
 
@@ -43,6 +46,9 @@ def make_job(**overrides):
         "remote": 0,
         "salary_max": 120000,
         "posted_at": None,
+        "min_years_exp": None,
+        "level": "entry",
+        "country": "US",
     }
     job.update(overrides)
     return job
@@ -73,6 +79,51 @@ def test_title_score_takes_the_highest_matching_weight(profile):
     # matches both "devops engineer" (8) and "systems engineer" (6)
     job = make_job(title="DevOps Engineer / Systems Engineer", description="")
     assert score_job(job, profile)["title_score"] == 8
+
+
+# --- experience and geography filters --------------------------------------- #
+
+
+def test_job_demanding_more_years_than_wanted_is_dropped(profile):
+    result = score_job(make_job(min_years_exp=5), profile)
+    assert result["dropped"] == "needs_5y_experience"
+
+
+def test_job_at_the_year_limit_is_kept(profile):
+    assert "dropped" not in score_job(make_job(min_years_exp=2), profile)
+
+
+def test_job_stating_no_year_requirement_is_kept(profile):
+    """Most postings never name a number; the filter must not silently eat them."""
+    assert "dropped" not in score_job(make_job(min_years_exp=None), profile)
+
+
+def test_senior_level_is_dropped_when_not_in_allowed_levels(profile):
+    assert score_job(make_job(level="senior"), profile)["dropped"] == "level:senior"
+
+
+def test_internship_and_entry_are_kept(profile):
+    for level in ("internship", "entry", "mid"):
+        assert "dropped" not in score_job(make_job(level=level), profile), level
+
+
+def test_foreign_job_is_dropped(profile):
+    """Greenhouse and Lever boards return roles worldwide."""
+    assert score_job(make_job(country="GB"), profile)["dropped"] == "country:GB"
+    assert "dropped" not in score_job(make_job(country="US"), profile)
+
+
+def test_unknown_level_or_country_is_kept(profile):
+    assert "dropped" not in score_job(make_job(level=None, country=None), profile)
+
+
+def test_filters_are_inactive_when_unconfigured():
+    """A profile with no experience or country rules must not drop anything."""
+    bare = compile_profile(
+        {"match": {**RESUME["match"], "max_years_experience": None, "levels": [], "countries": []}}
+    )
+    job = make_job(min_years_exp=20, level="senior", country="GB")
+    assert "dropped" not in score_job(job, bare)
 
 
 # --- components ------------------------------------------------------------ #
