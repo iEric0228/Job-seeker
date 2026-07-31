@@ -235,13 +235,45 @@ def parse_location(location, default_country=None):
     return country or default_country, state
 
 
-# "3+ years", "3-5 years", "minimum of 2 years", "at least 18 months"
+# "3+ years", "3-5 years", "minimum of 2 years". Context matters enormously:
+# a JD saying "401k vests after 5 years" is not asking for 5 years of anything.
 _YEARS_RE = re.compile(
     r"(?:(\d{1,2})\s*(?:\+|plus)?\s*(?:-|–|to)\s*\d{1,2}|(\d{1,2})\s*(?:\+|plus)?)\s*"
-    r"(?:\+\s*)?year",
+    r"(?:\+\s*)?years?",
     re.IGNORECASE,
 )
 _MONTHS_RE = re.compile(r"(\d{1,2})\s*months?", re.IGNORECASE)
+
+# A years figure only counts as a requirement if a demand word leads into it or
+# "experience"-ish language follows it closely.
+_DEMAND_LEAD = re.compile(
+    r"(minimum|at least|requires?|required|must have|need|seeking|with|of)\s*(of\s*)?$",
+    re.IGNORECASE,
+)
+_EXPERIENCE_TAIL = re.compile(
+    r"^\s*(?:\+|plus)?\s*(?:of\s+|in\s+|as\s+|with\s+)?"
+    r"(?:relevant|professional|hands.?on|industry|prior|related|work|practical|"
+    r"software|engineering|technical|combined)?\s*"
+    r"(experience|exp\b|working|background|building|supporting|administering)",
+    re.IGNORECASE,
+)
+# Boilerplate that mentions years without demanding them.
+_NOT_A_REQUIREMENT = re.compile(
+    r"(401|vest|tenure|anniversary|founded|since|past|over the (last|past)|"
+    r"our team|we have|the company|combined|history|in business|PTO|"
+    r"paid time|sabbatical|every|graduat(ed|ing) in)",
+    re.IGNORECASE,
+)
+
+
+def _is_requirement(blob, match):
+    """Does this 'N years' match actually state a requirement?"""
+    before = blob[max(0, match.start() - 60) : match.start()]
+    after = blob[match.end() : match.end() + 60]
+    if _NOT_A_REQUIREMENT.search(before[-45:]) or _NOT_A_REQUIREMENT.search(after[:25]):
+        return False
+    return bool(_DEMAND_LEAD.search(before) or _EXPERIENCE_TAIL.search(after))
+
 
 INTERNSHIP_RE = re.compile(r"\b(intern|internship|co-?op|placement student)\b", re.IGNORECASE)
 ENTRY_RE = re.compile(
@@ -267,12 +299,12 @@ def parse_experience(title, description):
     years = []
     for match in _YEARS_RE.finditer(blob):
         value = match.group(1) or match.group(2)
-        if value is not None:
+        if value is not None and _is_requirement(blob, match):
             years.append(int(value))
     for match in _MONTHS_RE.finditer(blob):
         months = int(match.group(1))
-        if months >= 6:  # "6 months experience" reads as 0 years, not 6
-            years.append(months // 12)
+        if months >= 6 and _is_requirement(blob, match):
+            years.append(months // 12)  # "6 months experience" reads as 0 years
     min_years = min(years) if years else None
 
     title_text = title or ""
