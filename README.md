@@ -33,15 +33,21 @@ git update-index --skip-worktree config.yaml
 python fetch.py     # pull new postings  (Adzuna capped at 10 calls/day)
 python score.py     # rank them
 python enrich.py    # full descriptions for the top 25
+python score.py     # rescore: the full JD changes keyword_score a lot
 streamlit run app.py
 ```
 
-Or just open the dashboard and press **Fetch now**, which runs fetch + score inline.
+The second `score.py` is not a typo. `enrich.py` replaces Adzuna's truncated
+excerpt with the full posting, and scoring before that means ranking on text you
+no longer have. On a realistic listing it is worth around 20 points.
+
+Or just open the dashboard and press **Fetch now**, which runs the whole
+sequence inline.
 
 A cron line, if you want it waiting for you:
 
 ```
-0 7 * * * cd /path/to/job-match && python fetch.py && python score.py && python enrich.py
+0 7 * * * cd /path/to/job-match && python fetch.py && python score.py && python enrich.py && python score.py
 ```
 
 ## Verify the APIs before trusting a run

@@ -6,11 +6,12 @@ streamlit run app.py
 import json
 import re
 from collections import Counter
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 import pandas as pd
 import streamlit as st
 
+import enrich as enriching
 import fetch
 import score as scoring
 from db import init_db, load_yaml, now_iso
@@ -101,11 +102,27 @@ def mark(conn, job_id, status, notes=None):
     conn.commit()
 
 
+def local_day_bounds(day):
+    """UTC bounds of a local calendar day.
+
+    applied_at is stored in UTC, but "applied today" has to mean the day on the
+    owner's wall clock -- otherwise an 8pm Boston application lands on tomorrow's
+    UTC date and drops out of the counter.
+    """
+    start = datetime.combine(day, time.min).astimezone()
+    end = start + timedelta(days=1)
+    return (
+        start.astimezone(UTC).isoformat(timespec="seconds"),
+        end.astimezone(UTC).isoformat(timespec="seconds"),
+    )
+
+
 def applied_today(conn):
-    today = date.today().isoformat()
+    start, end = local_day_bounds(date.today())
     return conn.execute(
-        "SELECT COUNT(*) FROM applications WHERE status != 'skipped' AND applied_at LIKE ?",
-        (f"{today}%",),
+        """SELECT COUNT(*) FROM applications
+           WHERE status != 'skipped' AND applied_at >= ? AND applied_at < ?""",
+        (start, end),
     ).fetchone()[0]
 
 
@@ -131,16 +148,19 @@ def pipeline_metrics(conn):
 
 
 def applications_per_day(conn, days=14):
-    rows = dict(
-        conn.execute(
-            """SELECT substr(applied_at, 1, 10) d, COUNT(*)
-               FROM applications WHERE status != 'skipped' AND applied_at IS NOT NULL
-               GROUP BY d"""
-        ).fetchall()
-    )
+    # Bucket in local time for the same reason applied_today() does.
+    counts = Counter()
+    for (stamp,) in conn.execute(
+        """SELECT applied_at FROM applications
+           WHERE status != 'skipped' AND applied_at IS NOT NULL"""
+    ):
+        try:
+            counts[datetime.fromisoformat(stamp).astimezone().date().isoformat()] += 1
+        except ValueError:
+            continue
     today = date.today()
     index = [(today - timedelta(days=n)).isoformat() for n in range(days - 1, -1, -1)]
-    return pd.DataFrame({"applied": [rows.get(d, 0) for d in index]}, index=index)
+    return pd.DataFrame({"applied": [counts.get(d, 0) for d in index]}, index=index)
 
 
 def tuning_rows(conn, limit=100):
@@ -294,7 +314,15 @@ def main():
                 new, _, _ = fetch.run_fetch(verbose=False)
             with st.spinner("Scoring…"):
                 scored, _ = scoring.run_score(verbose=False)
-            st.success(f"{new} new jobs, {scored} scored")
+            # Enrich the top jobs, then score again: enrichment replaces a
+            # truncated excerpt with the full JD, which moves keyword_score a
+            # lot. Ranking on the pre-enrichment text would waste the fetch.
+            with st.spinner("Fetching full descriptions (~1/sec)…"):
+                enriched, _ = enriching.run_enrich(verbose=False)
+            if enriched:
+                with st.spinner("Rescoring enriched jobs…"):
+                    scored, _ = scoring.run_score(verbose=False)
+            st.success(f"{new} new jobs, {scored} scored, {enriched} enriched")
             st.session_state.pop("filter_sig", None)  # force a queue rebuild
 
         last = (config.get("state") or {}).get("last_fetch") or "never"
