@@ -13,7 +13,11 @@ RESUME = {
             {"pattern": "devops engineer", "weight": 8},
             {"pattern": "systems? engineer", "weight": 6},
         ],
-        "exclude_titles": [r"\b(director|vp)\b", r"\bintern\b"],
+        "exclude_titles": [
+            r"\b(director|vp)\b",
+            r"\b(senior|sr\.?|staff|lead)\b",
+            r"\bmanager\b",
+        ],
         "exclude_description": [r"\bpolygraph\b", "top secret clearance"],
         "keywords": {
             "strong": {"aws": 5, "linux": 4, "troubleshooting": 4, "terraform": 3},
@@ -73,6 +77,42 @@ def test_exclude_description_drops_the_job(profile):
 
 def test_no_title_match_drops_the_job(profile):
     assert score_job(make_job(title="Pastry Chef"), profile)["dropped"] == "no_title_match"
+
+
+def test_off_target_titles_report_no_title_match_not_an_exclusion(profile):
+    """Filter order is a diagnostic choice, so it has to stay this way.
+
+    A "Senior Marketing Manager" is not a job you lost to the seniority rule --
+    it was never a candidate. Blaming the exclusion makes that rule look
+    expensive in `score.py --why` and hides the real shape of the funnel.
+    """
+    assert score_job(make_job(title="Senior Marketing Manager"), profile)["dropped"] == (
+        "no_title_match"
+    )
+    # ...but a target role that happens to be senior IS a real loss, and says so.
+    assert score_job(make_job(title="Senior Cloud Support Engineer"), profile)[
+        "dropped"
+    ].startswith("exclude_title:")
+
+
+def test_reordering_filters_changes_attribution_not_outcome(profile):
+    """Every hard filter is ANDed, so the surviving set must be order-independent."""
+    survivors = [
+        make_job(title="Cloud Support Engineer"),  # passes everything
+        make_job(title="DevOps Engineer", min_years_exp=1),
+    ]
+    rejects = [
+        make_job(title="Senior Marketing Manager"),
+        make_job(title="Senior Cloud Support Engineer"),
+        make_job(title="Cloud Support Engineer", min_years_exp=9),
+        make_job(title="Cloud Support Engineer", country="GB"),
+        make_job(title="Cloud Support Engineer", description="requires a polygraph"),
+        make_job(title="Pastry Chef"),
+    ]
+    for job in survivors:
+        assert "dropped" not in score_job(job, profile), job["title"]
+    for job in rejects:
+        assert "dropped" in score_job(job, profile), job["title"]
 
 
 def test_title_score_takes_the_highest_matching_weight(profile):

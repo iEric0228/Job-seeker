@@ -100,6 +100,21 @@ def score_job(job, profile):
     description = job.get("description") or ""
     location = job.get("location") or ""
 
+    # Order matters for diagnosis, not for outcome. Every filter here is ANDed,
+    # so the surviving set is identical whichever order they run in -- but
+    # whichever fires FIRST is the reason --why reports. Target-title matching
+    # goes first because it is by far the most selective: an ATS board is mostly
+    # sales, design and finance roles. Without this ordering a "Senior Marketing
+    # Manager" is blamed on the seniority rule, which makes that rule look
+    # expensive and hides the fact that it was never a candidate at all.
+    title_score = max(
+        (weight for pattern, weight in profile["target_titles"] if pattern.search(title)),
+        default=None,
+    )
+    if title_score is None:
+        return {"dropped": "no_title_match"}
+
+    # From here down, every drop is a job that WAS one of your target roles.
     for pattern in profile["exclude_titles"]:
         if pattern.search(title):
             return {"dropped": f"exclude_title:{pattern.pattern}"}
@@ -122,14 +137,6 @@ def score_job(job, profile):
     allowed_countries = profile["allowed_countries"]
     if allowed_countries and job.get("country") and job["country"] not in allowed_countries:
         return {"dropped": f"country:{job['country']}"}
-
-    # 2. components
-    title_score = max(
-        (weight for pattern, weight in profile["target_titles"] if pattern.search(title)),
-        default=None,
-    )
-    if title_score is None:
-        return {"dropped": "no_title_match"}
 
     haystack = f"{title}\n{description}"
     keyword_score = 0

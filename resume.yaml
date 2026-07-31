@@ -43,7 +43,11 @@ match:
     - "\\b(sales|account executive|recruiter|marketing)\\b"
     - "(front.?end|ui|ux|mobile|ios|android|game) (developer|engineer)"
     - "\\b(data scientist|machine learning|ml engineer)\\b"
-    - "\\bmanager\\b(?!.*technical account)"
+    # Anchored so the exemption sees the WHOLE title. A bare
+    # "\\bmanager\\b(?!.*technical account)" only inspects text after "manager",
+    # and in "Technical Account Manager" the phrase comes before it -- so the
+    # role you actually want was being excluded.
+    - "^(?!.*technical account).*\\bmanager\\b"
 
   exclude_description:
     - "(active|current)\\s+(ts/sci|top secret|secret)\\s+clearance"
