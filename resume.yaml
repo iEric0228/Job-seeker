@@ -1,0 +1,120 @@
+# Match profile. This is the only file you edit to change ranking behaviour.
+# Edit, then re-run `python score.py` (or hit Fetch now in the dashboard).
+#
+# target_titles / exclude_titles / exclude_description / locations are REGEX,
+# matched case-insensitively. keywords are LITERAL terms, matched on word
+# boundaries, so "c++" and "ci/cd" work as written.
+
+profile:
+  name: Eric Chiu
+  email: ericchiu0228@gmail.com # also sent as the USAJOBS User-Agent
+
+match:
+  # title_score = max weight of any matching pattern (0-10), then x3 in the
+  # total. No match at all drops the job. Order does not matter.
+  target_titles:
+    - { pattern: "cloud support (engineer|associate)", weight: 10 }
+    - { pattern: "technical support engineer", weight: 9 }
+    - { pattern: "support engineer", weight: 8 }
+    - { pattern: "cloud (engineer|operations|ops)", weight: 8 }
+    - { pattern: "devops engineer", weight: 8 }
+    - { pattern: "site reliability engineer|\\bsre\\b", weight: 8 }
+    - { pattern: "platform engineer", weight: 7 }
+    - { pattern: "infrastructure engineer", weight: 7 }
+    - { pattern: "systems? (engineer|administrator)", weight: 6 }
+    - { pattern: "linux (engineer|administrator|admin)", weight: 6 }
+    - { pattern: "network engineer", weight: 5 }
+    - { pattern: "solutions architect", weight: 5 }
+    - { pattern: "technical account manager", weight: 5 }
+    - { pattern: "noc (engineer|technician)", weight: 4 }
+
+  # Dropped before scoring.
+  exclude_titles:
+    - "\\b(director|vp|vice president|head of|chief|principal)\\b"
+    - "\\b(intern|internship|co-?op)\\b"
+    - "\\b(sales|account executive|recruiter|marketing)\\b"
+    - "(front.?end|ui|ux|mobile|ios|android|game) (developer|engineer)"
+    - "\\b(data scientist|machine learning|ml engineer)\\b"
+    - "\\bmanager\\b(?!.*technical account)"
+
+  exclude_description:
+    - "(active|current)\\s+(ts/sci|top secret|secret)\\s+clearance"
+    - "\\bpolygraph\\b"
+    - "must (be able to )?(work|reside) (on.?site|in.?person) in (?!.*remote)"
+    - "\\bunpaid\\b"
+    - "\\b(10|12|15)\\+? years of experience\\b"
+
+  # keyword_score = sum of the weights of terms found in title+description,
+  # each term counted once, capped at 30.
+  keywords:
+    strong:
+      aws: 5
+      linux: 4
+      troubleshooting: 4
+      networking: 3
+      terraform: 3
+      kubernetes: 3
+      python: 3
+      docker: 3
+      ec2: 2
+      s3: 2
+      vpc: 2
+      iam: 2
+      cloudwatch: 2
+      bash: 2
+      ci/cd: 2
+      "on-call": 2
+    nice:
+      dns: 1
+      tcp/ip: 1
+      ansible: 1
+      jenkins: 1
+      github actions: 1
+      lambda: 1
+      rds: 1
+      s3 bucket: 1
+      monitoring: 1
+      incident response: 1
+      sql: 1
+      git: 1
+      customer facing: 1
+      zendesk: 1
+      "certification": 1
+      route 53: 1
+      load balancer: 1
+      postmortem: 1
+
+    # Each present term costs -2, capped at -6 total, and is surfaced as an
+    # amber chip so you can see what you would be walking into.
+    gaps:
+      - java
+      - c++
+      - golang
+      - scala
+      - kafka
+      - hadoop
+      - salesforce
+      - sap
+      - "active directory"
+      - vmware
+      - oracle dba
+
+  # location_score = max weight of any matching entry (0-10).
+  # A job with remote=1 automatically scores the "Remote (US)" entry.
+  locations:
+    - { pattern: "Remote \\(US\\)", weight: 10 }
+    - { pattern: "boston|cambridge|somerville|waltham|burlington, ma", weight: 9 }
+    - { pattern: "massachusetts|\\bma\\b", weight: 7 }
+    - { pattern: "new hampshire|\\bnh\\b|nashua|manchester", weight: 5 }
+    - { pattern: "rhode island|\\bri\\b|providence", weight: 4 }
+    - { pattern: "connecticut|\\bct\\b", weight: 3 }
+
+  # salary_max below this earns a -5 penalty. Jobs with no salary data are
+  # not penalised -- most postings omit it.
+  salary_floor: 75000
+
+  # Adzuna queries: one call per title, top N by weight. Keep under the quota.
+  search:
+    where: "Boston, MA"
+    max_titles: 6
+    distance_km: 80

@@ -1,0 +1,26 @@
+[project]
+name = "job-seeker"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4>=4.15.0",
+    "httpx>=0.28.1",
+    "lxml>=6.1.1",
+    "pandas>=3.0.5",
+    "pyyaml>=6.0.3",
+    "streamlit>=1.60.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.1",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# DTZ011: "applied today" is deliberately the owner's local calendar day, not UTC.
+# DTZ007: posting dates arrive without offsets; to_iso() attaches UTC explicitly.
+ignore = ["DTZ011", "DTZ007"]

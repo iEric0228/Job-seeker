@@ -1,0 +1,16 @@
+data/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# secrets / local env
+.env
+.env.*
+
+# editors
+.vscode/
+.idea/
+*.swp
+.DS_Store

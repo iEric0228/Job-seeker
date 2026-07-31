@@ -1,0 +1,53 @@
+# Per-company ATS boards. Public JSON, no auth, no quota -- and the fullest
+# descriptions of any source, so these rows win dedup against Adzuna.
+#
+# Finding a token: open the company's careers page and look at the URL.
+#   https://boards.greenhouse.io/<token>       -> greenhouse
+#   https://jobs.lever.co/<token>              -> lever
+# A company that has moved ATS just logs one skipped-board line and is ignored,
+# so a stale entry here costs nothing. Verify with:
+#   python fetch.py --source greenhouse --probe
+#
+# Tuned for cloud / DevOps / SRE / support hiring. Add your own targets freely.
+
+greenhouse:
+  - cloudflare
+  - databricks
+  - dropbox
+  - doordash
+  - stripe
+  - coinbase
+  - reddit
+  - robinhood
+  - figma
+  - brex
+  - ramp
+  - plaid
+  - twilio
+  - asana
+  - discord
+  - instacart
+  - lyft
+  - pinterest
+  - benchling
+  - samsara
+  - flexport
+  - gusto
+  - airtable
+  - sentry
+  - vercel
+  - cockroachlabs
+  - hashicorp
+  - snyk
+
+lever:
+  - netflix
+  - lattice
+  - nerdwallet
+  - quora
+  - mixpanel
+  - rippling
+  - attentive
+  - fivetran
+  - matchgroup
+  - sharethrough
