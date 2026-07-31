@@ -14,7 +14,7 @@ import streamlit as st
 import enrich as enriching
 import fetch
 import score as scoring
-from db import init_db, load_yaml, now_iso
+from db import connect, init_db, load_yaml, now_iso
 
 DAILY_GOAL = 10
 QUEUE_SIZE = 10
@@ -63,8 +63,12 @@ STOPWORDS = {
 
 def candidate_jobs(conn, min_score=40, sources=None, remote_only=False, days=7, limit=BENCH_SIZE):
     """Ranked, deduped, excluding anything already in applications."""
+    # Explicit columns, never j.* -- jobs.raw_json holds the whole API payload and
+    # this query reruns on every slider move, toggle, apply, skip and tab switch.
     sql = """
-        SELECT j.*, s.score, s.title_score, s.keyword_score, s.location_score,
+        SELECT j.id, j.source, j.company, j.title, j.location, j.remote, j.url,
+               j.description, j.desc_is_full, j.salary_min, j.salary_max, j.posted_at,
+               s.score, s.title_score, s.keyword_score, s.location_score,
                s.freshness_score, s.penalty, s.matched_keywords, s.gap_flags
         FROM scores s
         JOIN jobs j ON j.id = s.job_id
@@ -355,7 +359,7 @@ def main():
 
     tab1, tab2, tab3 = st.tabs(["Today's Ten", "Pipeline", "Tuning"])
     with tab1:
-        render_today(conn)
+        render_today()
     with tab2:
         render_pipeline(conn)
     with tab3:
@@ -363,8 +367,15 @@ def main():
 
 
 @st.fragment
-def render_today(conn):
-    """Fragment so apply/skip reruns this list only, not the whole script."""
+def render_today():
+    """Fragment so apply/skip reruns this list only, not the whole script.
+
+    Opens its own connection rather than taking one as an argument: streamlit
+    retains fragment arguments for replay, so a connection passed in here would
+    outlive the run that created it, and sqlite3 connections are bound to the
+    thread that opened them.
+    """
+    conn = connect()
     queue = st.session_state.queue
     if not queue:
         st.info(
