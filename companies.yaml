@@ -46,3 +46,13 @@ lever:
 #   greenhouse: doordash, ramp, plaid, benchling, sentry, hashicorp, snyk
 #   lever:      netflix, lattice, nerdwallet, quora, mixpanel, rippling,
 #               attentive, fivetran, sharethrough
+#
+# Candidates worth trying -- companies that have used these ATSes, tokens NOT
+# verified. Test any of them (or your own guesses) in one command, which tries
+# each token against both ATSes and prints live/dead with posting counts:
+#
+#   uv run python fetch.py --check-boards snowflake datadog mongodb elastic \
+#       gitlab grafana confluent pagerduty digitalocean fastly okta datadoghq
+#
+# Anything reported live, paste into the lists above. Coverage is the main
+# lever on the size of the daily ten -- 22 boards is a small pond.

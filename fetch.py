@@ -15,6 +15,7 @@ import html
 import json
 import re
 import sys
+import time
 from datetime import UTC, date, datetime
 
 import httpx
@@ -781,6 +782,55 @@ ADAPTERS = {
 }
 
 
+BOARD_URLS = {
+    # content=false keeps the greenhouse check response small.
+    "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{}/jobs",
+    "lever": "https://api.lever.co/v0/postings/{}?mode=json",
+}
+
+
+def check_boards(candidates=None):
+    """Validate ATS board tokens without touching the database.
+
+    Checks every token in companies.yaml, plus any extra candidate tokens
+    given on the command line (tried against BOTH ATSes, since you usually
+    don't know which one a company uses). Prints live/dead and posting counts
+    so growing companies.yaml is a ten-second experiment instead of a wall of
+    404s on the next real fetch.
+    """
+    companies = load_yaml("companies.yaml")
+    plan = [(ats, token, False) for ats in BOARD_URLS for token in (companies.get(ats) or [])]
+    for token in candidates or []:
+        plan.extend((ats, token.lower().strip(), True) for ats in BOARD_URLS)
+
+    live = []
+    for i, (ats, token, is_candidate) in enumerate(plan):
+        if i:
+            time.sleep(0.3)  # gentle: these are public endpoints, not a race
+        try:
+            resp = httpx.get(BOARD_URLS[ats].format(token), timeout=15, follow_redirects=True)
+            if resp.status_code == 404:
+                status = "DEAD (404)"
+            else:
+                resp.raise_for_status()
+                payload = resp.json()
+                postings = payload if isinstance(payload, list) else payload.get("jobs", [])
+                status = f"live, {len(postings)} postings"
+                live.append((ats, token))
+        except Exception as exc:  # noqa: BLE001 - a check must never crash
+            status = f"error: {exc}"
+        tag = "candidate" if is_candidate else "listed"
+        print(f"  {ats:11} {token:24} [{tag}]  {status}")
+
+    print(f"\n{len(live)} live of {len(plan)} checked.")
+    listed = {t for ats in BOARD_URLS for t in (companies.get(ats) or [])}
+    new = [(a, t) for a, t in live if t not in listed]
+    if new:
+        print("add these to companies.yaml:")
+        for ats, token in new:
+            print(f"  {ats}: - {token}")
+
+
 def _probe(source, payload, items):
     print(f"\n--- {source} ---")
     keys = list(payload.keys()) if isinstance(payload, dict) else ["<array>"]
@@ -848,7 +898,16 @@ def main():
         help="limit to one source",
     )
     ap.add_argument("--probe", action="store_true", help="print raw response shapes, write nothing")
+    ap.add_argument(
+        "--check-boards",
+        nargs="*",
+        metavar="TOKEN",
+        help="validate companies.yaml board tokens (plus any TOKENs to try); writes nothing",
+    )
     args = ap.parse_args()
+    if args.check_boards is not None:
+        check_boards(args.check_boards)
+        return 0
     run_fetch(sources=args.source, probe=args.probe)
     return 0
 

@@ -81,6 +81,19 @@ uv run python fetch.py --source greenhouse --probe
 If the field names don't match what the adapter reads, fix the adapter — don't
 guess.
 
+## Growing board coverage
+
+Coverage is the main lever on how many jobs the daily ten has to choose from.
+To check every token in `companies.yaml` — and audition new ones — in seconds:
+
+```bash
+uv run python fetch.py --check-boards                      # validate the current list
+uv run python fetch.py --check-boards snowflake datadog    # try candidates on both ATSes
+```
+
+Each token prints live/dead with a posting count, and live candidates come with
+a ready-to-paste line for `companies.yaml`. Writes nothing.
+
 ## When the list looks empty
 
 ```bash
