@@ -32,10 +32,12 @@ CREATE TABLE IF NOT EXISTS jobs (
   salary_max    INTEGER,
   posted_at     TEXT,
   first_seen    TEXT NOT NULL,
-  raw_json      TEXT
+  raw_json      TEXT,
+  country       TEXT,               -- ISO-2, parsed from location
+  state         TEXT,               -- US 2-letter code, NULL outside the US
+  min_years_exp INTEGER,            -- lowest experience requirement found in the JD
+  level         TEXT                -- internship|entry|mid|senior
 );
-CREATE INDEX IF NOT EXISTS idx_jobs_dedupe ON jobs(dedupe_key);
-
 CREATE TABLE IF NOT EXISTS scores (
   job_id           TEXT PRIMARY KEY REFERENCES jobs(id),
   score            INTEGER NOT NULL,
@@ -48,8 +50,6 @@ CREATE TABLE IF NOT EXISTS scores (
   gap_flags        TEXT,
   scored_at        TEXT
 );
--- The Daily Ten query orders by score on every queue rebuild.
-CREATE INDEX IF NOT EXISTS idx_scores_score ON scores(score DESC);
 
 CREATE TABLE IF NOT EXISTS applications (
   job_id     TEXT PRIMARY KEY REFERENCES jobs(id),
@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS applications (
   applied_at TEXT,
   notes      TEXT
 );
+"""
+
+# Indexes are created after migrate(), never in SCHEMA: idx_jobs_geo names
+# columns that a pre-v2 database does not have yet, and CREATE TABLE IF NOT
+# EXISTS will not add them to a table that already exists.
+INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_jobs_dedupe ON jobs(dedupe_key);
+CREATE INDEX IF NOT EXISTS idx_jobs_geo ON jobs(country, state);
+-- The Daily Ten query orders by score on every queue rebuild.
+CREATE INDEX IF NOT EXISTS idx_scores_score ON scores(score DESC);
 """
 
 
@@ -70,9 +80,34 @@ def connect(path=DB_PATH):
     return conn
 
 
+# Columns added after v1 shipped. CREATE TABLE IF NOT EXISTS will not add them
+# to a database that already exists, so they are applied by hand.
+LATE_COLUMNS = {
+    "country": "TEXT",
+    "state": "TEXT",
+    "min_years_exp": "INTEGER",
+    "level": "TEXT",
+}
+
+
+def migrate(conn):
+    """Bring an existing database up to the current schema. Safe to re-run."""
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
+    if not existing:
+        return []  # brand new database; CREATE TABLE already has every column
+    added = [name for name in LATE_COLUMNS if name not in existing]
+    for name in added:
+        conn.execute(f"ALTER TABLE jobs ADD COLUMN {name} {LATE_COLUMNS[name]}")
+    if added:
+        conn.commit()
+    return added
+
+
 def init_db(path=DB_PATH):
     conn = connect(path)
     conn.executescript(SCHEMA)
+    migrate(conn)
+    conn.executescript(INDEXES)
     conn.commit()
     return conn
 

@@ -65,6 +65,9 @@ def compile_profile(resume):
             for entry in match.get("locations", []) or []
         ],
         "salary_floor": match.get("salary_floor"),
+        "max_years_experience": match.get("max_years_experience"),
+        "allowed_levels": set(match.get("levels") or []),
+        "allowed_countries": set(match.get("countries") or []),
     }
 
 
@@ -102,6 +105,22 @@ def score_job(job, profile):
     for pattern in profile["exclude_description"]:
         if pattern.search(description):
             return {"dropped": f"exclude_description:{pattern.pattern}"}
+
+    # Experience and geography are hard filters, not score components: wanting
+    # entry-level work means a 7-years-required job is not a weaker match, it
+    # is the wrong job. Jobs that state no requirement are kept.
+    max_years = profile["max_years_experience"]
+    min_years = job.get("min_years_exp")
+    if max_years is not None and min_years is not None and min_years > max_years:
+        return {"dropped": f"needs_{min_years}y_experience"}
+
+    allowed_levels = profile["allowed_levels"]
+    if allowed_levels and job.get("level") and job["level"] not in allowed_levels:
+        return {"dropped": f"level:{job['level']}"}
+
+    allowed_countries = profile["allowed_countries"]
+    if allowed_countries and job.get("country") and job["country"] not in allowed_countries:
+        return {"dropped": f"country:{job['country']}"}
 
     # 2. components
     title_score = max(

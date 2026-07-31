@@ -89,6 +89,33 @@ score = (title_score x 3) + keyword_score + location_score + freshness_score - p
 | `freshness_score` | 0/1/3 | posted <48h → 3, <7d → 1 |
 | `penalty` | 0–11 | `salary_max` below `salary_floor` → 5; each `keywords.gaps` term → 2, capped at 6 |
 
+### Experience and geography
+
+These are **hard filters, not score components** — wanting entry-level work means
+a job demanding seven years is the wrong job, not a weaker match.
+
+| `resume.yaml` key | Effect |
+|---|---|
+| `max_years_experience` | drops postings demanding more years than this |
+| `levels` | keeps only these bands: `internship`, `entry`, `mid`, `senior` |
+| `countries` | ISO-2 allowlist; empty means everywhere |
+
+**A posting that states no requirement is always kept.** Most JDs never name a
+number, and silently hiding them would cost you more jobs than it saves.
+
+Level comes from the title first (`Intern`, `New Grad`, `Junior`, `Senior`…),
+then the JD body, then the stated years. Years is the *lowest* figure found
+anywhere in the posting — "3–5 years" reads as 3 — because wrongly hiding a job
+you could have got is worse than showing one you skip.
+
+The `countries` filter matters more than it looks: Greenhouse and Lever boards
+return roles worldwide, so without it a London posting can reach your daily ten
+on title and keywords alone.
+
+The dashboard has matching sidebar filters (experience level, max years,
+country, state) that narrow further without re-running the scorer. Remote roles
+always pass the state filter.
+
 Everything lives in `resume.yaml`. Edit it, re-run `python score.py`, and use the
 **Tuning** tab to see what changed — it shows every component in its own column,
 plus the most frequent terms among *dropped* jobs, which is how you catch
