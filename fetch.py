@@ -375,7 +375,10 @@ def fetch_usajobs(config, resume, probe=False):
                     item.get("MatchedObjectId") or d.get("PositionID"),
                     title=d.get("PositionTitle"),
                     company=d.get("OrganizationName") or d.get("DepartmentName"),
-                    location=(locations[0] or {}).get("LocationName") if locations else "",
+                    # PositionLocationDisplay is already a clean single string;
+                    # PositionLocation[] is the structured fallback.
+                    location=d.get("PositionLocationDisplay")
+                    or ((locations[0] or {}).get("LocationName") if locations else ""),
                     url=d.get("PositionURI") or d.get("ApplyURI", [None])[0],
                     description=description,
                     desc_is_full=1,
@@ -424,7 +427,12 @@ def fetch_greenhouse(config, resume, probe=False):
                     url=item.get("absolute_url"),
                     description=strip_html(item.get("content")),
                     desc_is_full=1,
-                    posted_at=item.get("first_published") or item.get("updated_at"),
+                    # The board list endpoint does not return first_published --
+                    # only the per-job endpoint does. Deliberately NOT falling
+                    # back to updated_at: it is a modification date, so a role
+                    # reposted today but open for months would score the full
+                    # freshness bonus. No date is honest; a wrong one is not.
+                    posted_at=item.get("first_published"),
                     raw=item,
                 )
             )
@@ -525,7 +533,11 @@ def run_fetch(sources=None, probe=False, verbose=True):
         if verbose:
             print(f"  {name}: {len(jobs)} postings returned")
 
-    if not probe:
+    if probe:
+        # A probe still spends real Adzuna calls, so the counter has to persist
+        # even though nothing was written to the database.
+        save_yaml("config.yaml", config)
+    else:
         conn.commit()
         config.setdefault("state", {})["last_fetch"] = now_iso()
         save_yaml("config.yaml", config)
