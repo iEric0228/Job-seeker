@@ -262,20 +262,30 @@ def show_top(limit=20):
     conn = connect()
     rows = conn.execute(
         """SELECT s.score, s.title_score, s.keyword_score, s.location_score,
-                  s.freshness_score, s.penalty, j.title, j.company, j.location
+                  s.freshness_score, s.penalty, j.title, j.company, j.location,
+                  j.level, j.min_years_exp, j.country, j.state
            FROM scores s JOIN jobs j ON j.id = s.job_id
            ORDER BY s.score DESC LIMIT ?""",
         (limit,),
     ).fetchall()
     print(f"\ntop {len(rows)}   [{FORMULA}]")
     print(
-        f"{'tot':>4} {'ttl':>4} {'kw':>4} {'loc':>4} {'fr':>3} {'pen':>4}  title / company / location"
+        f"{'tot':>4} {'ttl':>4} {'kw':>4} {'loc':>4} {'fr':>3} {'pen':>4} "
+        f"{'level':<11}{'yrs':>4} {'geo':<7} title / company"
     )
     for r in rows:
+        geo = "/".join(x for x in (r["country"], r["state"]) if x)
         print(
             f"{r['score']:>4} {r['title_score']:>4} {r['keyword_score']:>4} "
-            f"{r['location_score']:>4} {r['freshness_score']:>3} {r['penalty']:>4}  "
-            f"{(r['title'] or '')[:38]:38} {(r['company'] or '')[:22]:22} {(r['location'] or '')[:20]}"
+            f"{r['location_score']:>4} {r['freshness_score']:>3} {r['penalty']:>4} "
+            f"{(r['level'] or '?'):<11}{(r['min_years_exp'] if r['min_years_exp'] is not None else '-'):>4} "
+            f"{geo:<7} {(r['title'] or '')[:36]:36} {(r['company'] or '')[:18]}"
+        )
+    # The dashboard hides anything under its Min score slider, default 40.
+    below = sum(1 for r in rows if r["score"] < 40)
+    if below:
+        print(
+            f"\n{below} of these score under 40 and are hidden by the dashboard's default slider."
         )
     conn.close()
 
