@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS scores (
   gap_flags        TEXT,
   scored_at        TEXT
 );
+-- The Daily Ten query orders by score on every queue rebuild.
+CREATE INDEX IF NOT EXISTS idx_scores_score ON scores(score DESC);
 
 CREATE TABLE IF NOT EXISTS applications (
   job_id     TEXT PRIMARY KEY REFERENCES jobs(id),
