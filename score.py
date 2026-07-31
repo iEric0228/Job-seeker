@@ -10,6 +10,7 @@ import argparse
 import json
 import re
 import sys
+from collections import Counter
 from datetime import UTC, datetime
 
 from db import connect, init_db, load_yaml, now_iso
@@ -184,7 +185,7 @@ def score_job(job, profile):
 # --------------------------------------------------------------------------- #
 
 
-def run_score(verbose=True):
+def run_score(verbose=True, explain=False):
     """Rescore every job. Returns (scored, dropped)."""
     resume = load_yaml("resume.yaml")
     profile = compile_profile(resume)
@@ -194,17 +195,20 @@ def run_score(verbose=True):
     rows = conn.execute("SELECT * FROM jobs").fetchall()
 
     scored = dropped = 0
+    reasons = Counter()
     stamp = now_iso()
     for row in rows:
         job = dict(row)
         if job["id"] in applied:
             conn.execute("DELETE FROM scores WHERE job_id = ?", (job["id"],))
             dropped += 1
+            reasons["already in applications"] += 1
             continue
         result = score_job(job, profile)
         if "dropped" in result:
             conn.execute("DELETE FROM scores WHERE job_id = ?", (job["id"],))
             dropped += 1
+            reasons[result["dropped"]] += 1
             continue
         conn.execute(
             """INSERT INTO scores (job_id, score, title_score, keyword_score,
@@ -237,6 +241,12 @@ def run_score(verbose=True):
     conn.commit()
     if verbose:
         print(f"scored {scored}, dropped {dropped} of {len(rows)} jobs")
+        if explain and reasons:
+            print("\nwhy jobs were dropped:")
+            for reason, count in reasons.most_common():
+                print(f"  {count:>5}  {reason}")
+            print("\nEach line is a rule in resume.yaml. If one is eating everything,")
+            print("that is the rule to loosen.")
     conn.close()
     return scored, dropped
 
@@ -268,8 +278,13 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--top", type=int, metavar="N", help="print the top N after scoring")
+    ap.add_argument(
+        "--why",
+        action="store_true",
+        help="break down which rule dropped each job -- run this when the list looks empty",
+    )
     args = ap.parse_args()
-    run_score()
+    run_score(explain=args.why)
     if args.top:
         show_top(args.top)
     return 0
